@@ -1,0 +1,671 @@
+---
+title: "Carbon Majors Emissions: An Exploratory Analysis"
+author: "Richard Baah Nkansah 
+            ID: S2424536"
+date: "`r Sys.Date()`"
+classoption: 11pt
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    fig_width: 7
+    fig_height: 4
+    fig_caption: true
+    latex_engine: pdflatex
+    number_sections: true
+  html_document:
+    toc: true
+    toc_depth: '2'
+    df_print: paged
+  word_document:
+    toc: true
+    toc_depth: 2
+bibliography: references.bib
+csl: harvard.csl
+header-includes:
+  - \usepackage[utf8]{inputenc}
+  - \usepackage{newunicodechar}
+  - \newunicodechar{₂}{\ensuremath{{}_2}}
+  - \usepackage{float}       # For H positioning
+  - \usepackage{booktabs}    # For better tables
+  - \usepackage{placeins}    # For \FloatBarrier
+  - \normalsize
+  - \usepackage{mathptmx}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,       # Makes code visible
+  warning = FALSE,   # hide warnings
+  message = FALSE    # hide package messages
+)
+
+```
+
+
+
+
+\newpage
+
+# Project Summary
+
+This report presents an exploratory data analysis and visualisation of the Carbon Majors Emissions dataset. The dataset records historical CO2 emissions by major fossil fuel companies, their fuel production types, and ownership models. The aim is to better understand patterns of emissions among top polluters, the relationship between ownership and emissions, and the impact of fossil fuel type on emission levels.
+
+Using R and tidyverse tools, this study poses four key research questions and provides detailed analysis supported by data visualisations. The insights from this report are critical in shaping policy discussions and providing evidence for emission reduction strategies. The results suggest that certain companies and fuel types are consistently more polluting, and ownership type plays a potential role in emissions accountability.
+
+
+# Background of This Study
+
+Climate change remains one of the most urgent global challenges, with greenhouse gas emissions—particularly carbon dioxide (CO₂)—as its primary driver. Fossil fuel combustion from oil, coal, and gas accounts for nearly 90% of anthropogenic CO₂ emissions, as identified by the Intergovernmental Panel on Climate Change (IPCC)[@ipcc2021]. While countries are often held accountable in international climate agreements the Paris Agreement [@unfccc2015], research has shown that a small number of companies contribute disproportionately to these emissions.
+
+The Carbon Majors Emissions dataset provides detailed annual emissions data (1965–2022) from 122 of the world’s largest fossil fuel producers, including state-owned entities, nation-states, and private corporations. This dataset captures both total CO₂ emissions (in million tonnes of CO₂ equivalent) and fossil fuel production values, along with metadata such as fuel type (commodity) and ownership structure[@im2023].
+
+This report conducts a visual and statistical exploration of the dataset to highlight key drivers of emissions over time, identify the top contributors, and explore how emissions differ by ownership and commodity. The findings can guide policymakers, activists, and researchers seeking to reduce carbon inequality and improve emissions accountability.
+
+
+# Methodology
+
+This study adopts an exploratory data analysis (EDA) approach to examine global carbon dioxide emissions from fossil fuel production, based on data from the Carbon Majors Emissions dataset. The goal is to uncover key patterns in emissions across time, ownership types, commodities, and companies. EDA is particularly suited for this type of work, as it allows for descriptive and comparative insights without requiring complex predictive models.
+
+The analysis began with data wrangling and cleaning. This involved checking for missing  and duplicates values, and checking for potential outliers using statistical rules such as the interquartile range (IQR) method. 
+
+Next, the dataset was aggregated across key dimensions such as year, parent entity, ownership type, and commodity type. This allowed for multi-level comparison of emissions, both cumulatively and on average. Emissions were analyzed not just in total volume but also in terms of their intensity relative to fuel type and company scale.
+
+A variety of visualization techniques were used to present findings, including bar charts, line plots, boxplots, and correlation heatmaps. Each visual was designed following best practices in data visualization, with clear labeling, consistent use of color palettes and emphasis techniques such as highlighting top emitters while muting others.The analysis was conducted entirely in R using RStudio. The following R packages were used:
+
+-**tidyverse and dplyr**: A package for data cleaning and manipulation
+
+-**ggplot2 and scales**: A package for plotting and axis formatting
+
+-**forcats**: A package for reordering categorical variables
+
+-**corrplot**: A package for enhanced visualizations
+
+-**patchwork**: A package for multi-plot layout 
+
+-**janitor**: A package for cleaning column names and data structure  
+
+-**readr**: A package for fast data import  
+
+-**knitr**:A package for generating well-format document
+
+These packages provided a robust and flexible environment for data exploration and reporting.
+
+
+## Loading Libraries
+
+```{r libraries, include=TRUE}
+# Install and load libraries
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("janitor")) install.packages("janitor")
+if (!require("scales")) install.packages("scales")
+if (!require("patchwork")) install.packages("patchwork")
+if (!require("corrplot")) install.packages("corrplot")
+
+# Load the package
+library(corrplot)
+library(patchwork)
+library(tidyverse)
+library(janitor)
+library(scales)
+
+```
+
+## Loading the Dataset
+
+To load the carbon emissions dataset into the R markdown, the following chuck of code were used
+```{r loading the dataset}
+# Load and clean data
+emissions_raw <- read_csv("Emissions.csv")
+emissions <- emissions_raw %>% clean_names()
+```
+
+## Exploring the Dataset Structure
+
+The uploaded emissions dataset was explored using the **glimpse function**. This provides information about the row and column number and their property types. 
+```{r Dataset Structure Exploration}
+#shows the dataset structure
+glimpse(emissions)
+```
+
+## Summary of the Dataset Key Variables
+
+To gain more insight into the dataset used in this study, the summary statistics of the dataset variables were further also explored using the **summary function**.
+```{r dataset summary}
+# Summary of numeric and categorical variables
+summary(emissions)
+```
+The summary output showed that the dataset contains 12,551 rows and 8 columns, out of which six are categorical variables and two are numerical. Additionally, the dataset was checked for null values and duplicates, which could impact the final results.
+
+```{r Data Cleaning and Wranggling}
+# Check for missing values
+colSums(is.na(emissions))
+
+# Filter and mutate key variables
+emissions_clean <- emissions %>%
+  filter(!is.na(total_emissions_mt_co2e),
+         !is.na(production_value),
+         !is.na(commodity),
+         !is.na(parent_entity)) %>%
+  mutate(
+    year = as.integer(year),
+    parent_type = as.factor(parent_type),
+    commodity = as.factor(commodity),
+    parent_entity = as.factor(parent_entity)
+  )
+```
+```{r duplicates check}
+# Find fully duplicated rows
+duplicates_full <- emissions %>%
+  filter(duplicated(.))
+
+# Count of fully duplicated rows
+duplicate_rows <- nrow(duplicates_full)
+cat("Number of row duplicates:", duplicate_rows, "\n")
+
+```
+The results of the check indicated that the dataset contains no null or duplicate values. 
+
+Upon consideration from the summary statistics, the following research questions were formulated:
+
+1. What is the trend of total CO₂ emissions over time?
+This question examines the global trajectory of fossil fuel emissions from 1965 to 2022, helping to identify whether emissions have increased, decreased, or stabilized in recent decades.
+
+2. Who are the top contributors to emissions, and how have their emissions changed over time?
+This question aims to identify the most impactful companies or entities and observe whether their emission levels have remained consistent or changed over time.
+
+3. How do emissions differ across ownership types (e.g., state-owned vs investor-owned)?
+This analysis helps determine if emissions are more prevalent among companies with a specific ownership structure, which has implications for climate accountability and policy enforcement.
+
+4. Which fossil fuel types contribute the most to emissions — both in total and on average and how is production volume correlated with emissions?
+This question investigates the cumulative impact of different commodities (e.g., oil, coal, gas) and identifies the most carbon-intensive fuels per unit of production.
+
+From the proposed research questions, the following variables from the dataset were chosen: 
+
+- **parent_entity**: The name of the company, country, or nation-state responsible for the reported emissions.
+
+- **parent_type**: The ownership category of the entity (e.g., investor-owned, state-owned, or nation-state).
+
+- **commodity**: The type of fossil fuel produced (e.g., crude oil, natural gas, bituminous coal).
+
+- **year**: The reporting year for emissions and production values.
+
+- **total_emissions_mt_co2e**: The reported CO₂ emissions associated with production, measured in million tonnes of CO₂ equivalent (MtCO₂e).
+
+- **production_value**: The amount of fossil fuel produced by the entity in the given year.
+
+These variables were chosen because they directly relate to the structure of fossil fuel emissions: who is emitting, what they’re emitting, how much, and when. Variables such as total_emissions_mt_co2e and production_value serve as the core metrics for quantitative analysis, while categorical variables like parent_entity, parent_type, and commodity enable meaningful grouping and segmentation for comparison.
+
+## Data Distribution and Outliers
+
+Next, the numerical variables were checked for outliers, as they can directly impact the final results. Therefore, a histogram and boxplot were generated to examine how these variables are distributed.
+
+```{r histogram distribution with outliers,fig.cap=c("Histogram Plotting for Emission and Production With Outliers"), echo=TRUE}
+# Histogram of total emissions
+emission_hist_plot<-ggplot(emissions, aes(x = total_emissions_mt_co2e)) +
+  geom_histogram(fill = "#1f78b4", color = "white", bins = 50) +
+  labs(title = "Histogram of Total Emissions 
+         (With Outliers)",
+       x = "Total Emissions(MtCO2e)", y = "Frequency") +
+  theme_minimal()
+
+
+# Histogram of production value
+production_hist_plot<-ggplot(emissions, aes(x =  production_value)) +
+  geom_histogram(fill = "#1f78b4", color = "white", bins = 50) +
+  labs(title = "Histogram of  production_value 
+         (With Outliers)",
+       x = "production_value", y = "Frequency") +
+  theme_minimal()
+
+
+# Display emissions distribution plots side-by-side
+emission_hist_plot + production_hist_plot
+
+```
+```{r box plot with outliers, fig.cap=c("Box Plotting for Emission and Production With Outliers"), echo=TRUE}
+# Boxplot to detect emissions outliers 
+emission_box_plot<-ggplot(emissions, aes(y = total_emissions_mt_co2e)) +
+  geom_boxplot(fill = "#1f78b4") +
+  labs(title = "Boxplot of Total Emissions 
+       (With Outliers)",
+       y = "Total Emissions (MtCO2e)") +
+  theme_minimal()
+
+# Boxplot to detect production value outliers
+production_box_plot<-ggplot(emissions, aes(y = production_value)) +
+  geom_boxplot(fill = "#1f78b4") +
+  labs(title = "Boxplot of Production Value 
+        (With Outliers)",
+       y = "Production Value") +
+  theme_minimal()
+
+# Display emissions distribution plots side-by-side
+emission_box_plot + production_box_plot 
+```
+
+\FloatBarrier
+
+The histogram plot (**Figure 1**) showed that the data is left-skewed, and the boxplot (**Figure 2**) also indicated the presence of outliers in the dataset. The Interquartile Range (IQR) method was applied to handle the detected outliers, and updated histogram and boxplot visualisations were generated to examine the distribution after removing the outliers.
+
+```{r Histogram Without Outliers, fig.cap=c("Histogram Plotting for Emission and Production Without Outliers"), echo=TRUE}
+# Compute IQR bounds for emissions
+emission_bounds <- emissions %>%
+  summarise(
+    Q1 = quantile(total_emissions_mt_co2e, 0.25, na.rm = TRUE),
+    Q3 = quantile(total_emissions_mt_co2e, 0.75, na.rm = TRUE)
+  ) %>%
+  mutate(
+    IQR = Q3 - Q1,
+    lower_bound = Q1 - 1.5 * IQR,
+    upper_bound = Q3 + 1.5 * IQR
+  )
+
+# Filter emissions within bounds
+emissions_no_outliers <- emissions %>%
+  filter(total_emissions_mt_co2e <= emission_bounds$upper_bound,
+         total_emissions_mt_co2e >= emission_bounds$lower_bound)
+
+# Compute IQR bounds for production
+production_bounds <- emissions %>%
+  summarise(
+    Q1 = quantile(production_value, 0.25, na.rm = TRUE),
+    Q3 = quantile(production_value, 0.75, na.rm = TRUE)
+  ) %>%
+  mutate(
+    IQR = Q3 - Q1,
+    lower_bound = Q1 - 1.5 * IQR,
+    upper_bound = Q3 + 1.5 * IQR
+  )
+
+# Filter production within bounds
+production_no_outliers <- emissions %>%
+  filter(production_value <= production_bounds$upper_bound,
+         production_value >= production_bounds$lower_bound)
+
+
+
+# Histogram of total emissions (no outliers)
+hist_emissions_no_outlier <- ggplot(emissions_no_outliers, 
+                                    aes(x = total_emissions_mt_co2e)) +
+  geom_histogram(fill = "#1f78b4", color = "white", bins = 40) +
+  labs(title = "Histogram of Total Emissions 
+         (No Outliers)",
+       x = "Total Emissions (MtCO2e)", y = "Frequency") +
+  theme_minimal()
+
+# Histogram of total production (no outliers)
+hist_production_no_outlier <- ggplot(production_no_outliers, 
+                                     aes(x = production_value)) +
+  geom_histogram(fill = "#1f78b4", color = "white", bins = 40) +
+  labs(title = "Histogram of Total Production 
+         (No Outliers)",
+       x = "Total Production", y = "Frequency") +
+  theme_minimal()
+
+# Display emissions distribution plots side-by-side
+hist_emissions_no_outlier + hist_production_no_outlier
+```
+```{r Box Plot Without Outliers, fig.cap=c("Box plotting Plotting for Emission and Production Without Outliers"), echo=TRUE}
+
+# Boxplot of total emissions
+box_emissions <- ggplot(emissions_no_outliers, 
+                        aes(y = total_emissions_mt_co2e))+ 
+                        geom_boxplot(fill = "#1f78b4") +
+                        labs(title = "Boxplot of Total Emissions
+                        (No Outliers)",
+                        y = "Total Emissions (MtCO2e)") +
+                        theme_minimal()
+# Boxplot of total production value
+production_boxplot_no_outlier <- ggplot(production_no_outliers, 
+                                        aes(y = production_value)) +
+  geom_boxplot(fill = "#1f78b4") +
+  labs(title = "Boxplot of Production Emissions
+         (No Outliers)",
+       y = "Total Production") +
+  theme_minimal()
+
+box_emissions+production_boxplot_no_outlier
+
+```
+
+\FloatBarrier
+
+The histogram (**Figure 3**) and boxplot (**Figure 4**), after removing the outliers, showed that a large portion of the data had been removed. Therefore, the excluded data were further explored to determine whether they were truly outliers.
+
+```{r exploring outlier results}
+
+# Compute IQR and bounds
+emission_stats <- emissions %>%
+  summarise(
+    Q1 = quantile(total_emissions_mt_co2e, 0.25, na.rm = TRUE),
+    Q3 = quantile(total_emissions_mt_co2e, 0.75, na.rm = TRUE)
+  ) %>%
+  mutate(
+    IQR = Q3 - Q1,
+    Lower = Q1 - 1.5 * IQR,
+    Upper = Q3 + 1.5 * IQR
+  )
+
+# Filter outliers
+emission_outliers <- emissions %>%
+  filter(total_emissions_mt_co2e > emission_stats$Upper)
+
+# View outliers by company and year
+emission_outliers %>%
+  select(year, parent_entity, parent_type, commodity,
+         production_value, production_unit,
+         total_emissions_mt_co2e) %>%
+  arrange(desc(total_emissions_mt_co2e))
+
+```
+
+After further exploration, it was observed that these data points primarily originate from companies involved in the production of coal, oil, and gas. Therefore, these values although outliers were retained for subsequent analysis.
+
+# Results
+## Trend of Emissions Overtime
+
+A line chart was used to visualise changes in global emissions across time. This was the most appropriate format to address **RQ1**, as it shows the continuous trend of emissions from 1965 to 2022 and reveals any shifts, peaks, or flattening. The addition of data points helped emphasize changes in individual years.
+```{r emissions over time, fig.cap=c("CO2 Emissions Over Time"), echo=TRUE}
+# Total emissions by year
+emissions_by_year <- emissions %>%
+  filter(!is.na(year)) %>%
+  group_by(year) %>%
+  summarise(total_emissions = sum(total_emissions_mt_co2e, na.rm = TRUE))
+
+# Line chart showing the trend
+ggplot(emissions_by_year, aes(x = year, y = total_emissions)) +
+  geom_line(color = "#1f78b4", size = 1.2) +
+  geom_point(size = 2.5, color = "#1f78b4") +
+  labs(title = "Global CO2 Emissions Over Time",
+       x = "Year", y = "Total Emissions") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal(base_size = 12)
+
+```
+
+\FloatBarrier
+
+The line plot (**Figure 5**) reveals a clear upward trend in emissions from the 1960s through the early 2000s, reflecting global industrial growth and energy demands. Emissions appear to plateau or fluctuate in recent years, possibly reflecting international policy efforts and market transitions toward renewables. However, overall emissions remain high, signaling a need for more aggressive global action.
+
+## Top 10 Emitting Companies and Their Emissions Overtime
+
+To address **RQ2**, a horizontal bar chart (**Figure 6**) was used to display the top 10 entities by cumulative emissions. Bar charts are ideal for ranking categorical variables such as company names. Additionally, the leading emitter was highlighted using a contrasting color to emphasize dominance, a technique aligned with visual hierarchy principles.
+```{r top 10 company emitters, fig.cap=c("Top 10 Emitting Companies", fig.pos = "H"), echo=TRUE}
+# Get top 10 emitting companies
+top_companies <- emissions %>%
+  group_by(parent_entity) %>%
+  summarise(total_emissions = sum(total_emissions_mt_co2e, na.rm = TRUE)) %>%
+  arrange(desc(total_emissions)) %>%
+  slice_head(n = 10)
+
+# Identify top emitter
+top_company <- top_companies$parent_entity[1]
+
+# Plot with highlight
+ggplot(top_companies, aes(x = reorder(parent_entity, total_emissions),
+                          y = total_emissions,
+                          fill = parent_entity == top_company)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_manual(values = c("TRUE" = "#1f78b4", "FALSE" = "#bdbdbd"),
+                    labels = c("Others", "Top Emitter")) +
+  labs(title = "Top 10 Emitting Companies (Cumulative)",
+       x = "Company", y = "Total Emissions", fill = "") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal(base_size = 12)
+
+```
+
+\FloatBarrier
+
+A grouped line chart was used to compare emissions trends over time for the top 10 companies. This chart provided a longitudinal perspective on how each entity’s emissions have evolved, supporting time-series comparison within a limited set of categories.
+```{r top 10 companies emissions overtime, fig.cap=c("Top 10 Emitting Companies",fig.pos = "H"),echo=TRUE}
+top_10_names <- top_companies$parent_entity
+
+# Step 1: Get top 2 companies based on total emissions
+top_2_names <- emissions %>%
+  filter(parent_entity %in% top_10_names) %>%
+  group_by(parent_entity) %>%
+  summarise(total_emissions = sum(total_emissions_mt_co2e, na.rm = TRUE)) %>%
+  arrange(desc(total_emissions)) %>%
+  slice_head(n = 2) %>%
+  pull(parent_entity)
+
+# Step 2: Filter and prepare data
+emissions_top_10_over_time <- emissions %>%
+  filter(parent_entity %in% top_10_names) %>%
+  group_by(year, parent_entity) %>%
+  summarise(yearly_emissions = sum(total_emissions_mt_co2e, na.rm = TRUE), 
+            .groups = "drop") %>%
+  mutate(parent_entity = factor(parent_entity, 
+                                levels = top_companies$parent_entity),
+         highlight = ifelse(parent_entity %in% top_2_names, 
+                            "highlight", "other"))
+
+# Step 3: Create color palette
+#highlight_colors <- RColorBrewer::brewer.pal(2, "Dark2")
+highlight_colors <- c("#1f77b4", "#6baed6")  # Dark blue and light blue
+names(highlight_colors) <- top_2_names
+
+# Muted gray for other companies
+other_colors <- rep("gray80", 
+                length(setdiff(levels(emissions_top_10_over_time$parent_entity),
+                               top_2_names)))
+names(other_colors) <- setdiff(levels(emissions_top_10_over_time$parent_entity),
+                               top_2_names)
+
+# Combine all colors
+final_palette <- c(highlight_colors, other_colors)
+
+# Step 4: Plot
+ggplot(emissions_top_10_over_time, aes(x = year, 
+                                y = yearly_emissions, group = parent_entity)) +
+  geom_line(aes(color = parent_entity, alpha = highlight, size = highlight)) +
+  geom_point(aes(color = parent_entity, alpha = highlight), size = 1.5) +
+  scale_color_manual(values = final_palette) +
+  scale_alpha_manual(values = c("highlight" = 1, "other" = 0.5), 
+                     guide = "none") +
+  scale_size_manual(values = c("highlight" = 1.2, "other" = 0.7), 
+                    guide = "none") +
+  labs(
+    title = "Emissions Over Time for Top 10 Emitting Companies",
+    subtitle = "Top 2 companies highlighted",
+    x = "Year", y = "Total Emissions (MtCO2e)",
+    color = "Company"
+  ) +
+  scale_y_continuous(labels = comma) +
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(face = "bold"),
+    legend.text = element_text(size = 10),
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 11, margin = margin(b = 10))
+  )
+```
+
+\FloatBarrier
+
+The top 10 companies (**Figure 7**) including state-run and multinational entities like China (Coal), Former Soviet Union, Saudi Aramco, and Chevron are responsible for the majority of emissions. Some show consistent increases over time, while others have fluctuated or declined. This highlights the concentration of emissions among a few dominant actors, reinforcing the idea of "carbon majors".
+
+## Emissions by Ownership Type
+
+To explore **RQ3**, a pie chart was used to compare total emissions across ownership structures (e.g., nation-state, state-owned, investor-owned). Since ownership is a categorical variable, the pie chart provides a clear representation of the relative contribution of each group to the total emissions.
+```{r emissions by ownership type,fig.cap=c("Emissions by Ownership Type",fig.pos = "H"),echo=TRUE}
+# Total emissions by ownership type
+emissions_by_type <- emissions %>%
+  group_by(parent_type) %>%
+  summarise(total_emissions = sum(total_emissions_mt_co2e, na.rm = TRUE)) %>%
+  arrange(desc(total_emissions))
+
+# Identify top ownership type
+top_type <- emissions_by_type$parent_type[1]
+
+# Create a named color vector with distinct grays
+type_colors <- ifelse(emissions_by_type$parent_type == top_type,
+                     "#1f78b4",  # Blue for top type
+                     c("#9e9e9e", "#757575", "#616161")
+                     [1:(nrow(emissions_by_type)-1)])  # Progressive grays
+names(type_colors) <- emissions_by_type$parent_type
+
+# Pie chart with improved gray contrast
+ggplot(emissions_by_type, 
+       aes(x = "", 
+           y = total_emissions, 
+           fill = parent_type)) +
+  geom_col(width = 1, color = "white", 
+           linewidth = 0.7) +  # Thicker white borders
+  coord_polar(theta = "y") +
+  scale_fill_manual(values = type_colors,
+                    name = "Ownership Type",
+                    labels = function(x) ifelse(x == top_type, 
+                                              paste0(x, " (Top)"), 
+                                              x)) +  # Explicit top label
+  geom_text(aes(label = percent(total_emissions/sum(total_emissions),
+            accuracy = 0.1)),
+            position = position_stack(vjust = 0.5),
+            size = 4, 
+            color = c("white", rep("black", 
+            nrow(emissions_by_type)-1)),  # White text on blue
+            fontface = "bold") +
+  labs(
+    title = "Total Emissions by Ownership Type",
+    subtitle = paste("Top type:", top_type, "accounts for", 
+                     "(", round(emissions_by_type$total_emissions[1]/
+                      sum(emissions_by_type$total_emissions)*100, 1), "%)"),
+    caption = "Data source: Emissions data"
+  ) +
+  theme_void(base_size = 13) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 15),
+    plot.subtitle = element_text(hjust = 0.5, color = "grey30", size = 12),
+    legend.text = element_text(size = 11),
+    legend.title = element_text(face = "bold")
+  ) +
+  guides(fill = guide_legend(reverse = TRUE))  # Show highest first in legend
+
+```
+
+\FloatBarrier
+
+The analysis (**Figure 8**) reveals that nation-state and state-owned entities contribute the majority of global CO2 emissions, compared to investor-owned companies. This reflects their scale of operation and long-standing fossil fuel dominance in national economies. Policymakers should consider ownership structure in accountability frameworks.
+
+## Total and Average Emissions by Fossil Fuel Type and Their Correlation with Production
+
+In addressing **RQ4**, two bar charts were generated separately—one showing total emissions (**Figure 9**) and the other showing average emissions per record (**Figure 10**) across fuel types. This approach allowed for comparisons of both scale and intensity. For example, bituminous coal was revealed to have the highest average emissions per record, while oil and natural gas liquids (NGL) led in total emissions.
+```{r total emission by Fossil Fuel Type,fig.cap=c("Total Emissions by Fossil Fuel Type",fig.pos = "H"),echo=TRUE}
+# Total emissions by commodity
+commodity_emissions <- emissions %>%
+  group_by(commodity) %>%
+  summarise(total_emissions = sum(total_emissions_mt_co2e, na.rm = TRUE)) %>%
+  arrange(desc(total_emissions))
+
+# Highlight the top-emitting commodity (likely Bituminous Coal)
+top_commodity <- commodity_emissions$commodity[1]
+
+# Plot with focus color
+ggplot(commodity_emissions, aes(x = reorder(commodity, total_emissions),
+                                y = total_emissions,
+                                fill = commodity == top_commodity)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_manual(values = c("TRUE" = "#1f78b4", "FALSE" = "#bdbdbd"),
+                    labels = c("Others", "Top Fuel Type")) +
+  labs(title = "Total Emissions by Fossil Fuel Type",
+       x = "Commodity", y = "Total Emissions", fill = "") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal(base_size = 12)
+
+```
+
+\FloatBarrier
+
+**Oil and NGL** fuels contribute the highest total emissions, reflecting their widespread use.
+
+```{r Average Emissions by Fossil Fuel Type,fig.cap="Average Emissions by Fossil Fuel Type",fig.pos = "H",echo=TRUE}
+commodity_emissions <- emissions %>%
+  group_by(commodity) %>%
+  summarise(total_emissions = mean(total_emissions_mt_co2e, na.rm = TRUE)) %>%
+  arrange(desc(total_emissions))
+
+# Highlight the top-emitting commodity (likely Bituminous Coal)
+top_commodity <- commodity_emissions$commodity[1]
+
+# Plot with focus color
+ggplot(commodity_emissions, aes(x = reorder(commodity, total_emissions),
+                                y = total_emissions,
+                                fill = commodity == top_commodity)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_manual(values = c("TRUE" = "#1f78b4", "FALSE" = "#bdbdbd"),
+                    labels = c("Others", "Top Fuel Type")) +
+  labs(title = "Average Emissions by Fossil Fuel Type",
+       x = "Commodity", y = "Average Emissions", fill = "") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal(base_size = 12)
+```
+
+\FloatBarrier
+
+However, **bituminous coal** has the highest average emissions per record, showing it's the dirtiest fuel per unit.
+
+In exploring the relationship between production and emissions, a correlation heatmap was created to visualize their connection.
+```{r corelation Between Production and Emissions, fig.cap="Correlation Map for Production Value and Emissions",fig.pos = "H",fig.width=7,fig.height=5, echo=TRUE}
+
+# View numeric column names first (optional)
+numeric_cols <- emissions %>%
+  select(where(is.numeric)) %>%
+  names()
+
+
+# Only include the two core variables you care about
+numeric_data_clean <- emissions %>%
+  select(production_value, total_emissions_mt_co2e) %>%
+  drop_na() %>%
+  mutate(across(everything(), scale))  # Normalize data to [-1,1] range
+
+
+# Calculate the correlation matrix
+cor_matrix_clean <- cor(numeric_data_clean)
+
+# Better looking correlation map for just two variables
+corrplot(cor_matrix_clean,
+         method = "circle",                 # or use "color" for color blocks
+         type = "full",                    # show both upper and lower
+         addCoef.col = "white",            # show the numbers
+         tl.col = "black",                 # text label color
+         col = colorRampPalette(c("red", "white", "#1f78b4"))(200),
+         number.cex = 1.2,                 # size of numbers
+         tl.cex = 1.1,                     # size of labels
+         title = "Correlation: Production vs Emissions",
+         mar = c(1,1,2,1))                 # adjust margin to avoid overlap
+```
+
+\FloatBarrier
+
+The Correlation heatmap (**Figure 11**) revealed a moderate correlation (**0.4**) between production and emissions indicating that while more production tends to result in more emissions, the carbon intensity varies greatly by fuel type and producer.
+
+# Conclusion and Recommendations
+
+This **exploratory analysis** of the **Carbon Majors Emissions dataset** has provided critical insights into the global distribution of carbon dioxide (CO₂) emissions from fossil fuel production. The investigation focused on identifying emission trends over time, profiling the largest contributors, analyzing differences in emissions based on ownership type, and evaluating the carbon intensity of various fuel types. Additionally, the correlation between fossil fuel production and emissions was examined to understand how production scale relates to environmental impact.
+
+The results show a clear upward trend in total emissions from the **1960s** through the early **2000s**, with signs of fluctuation and leveling in recent years. This trend reflects industrial expansion and the global reliance on fossil fuels, although recent shifts may signal the influence of climate policy, cleaner energy alternatives, or economic factors.
+
+A small number of companies were responsible for a disproportionately large share of total emissions. Entities such as **China (Coal)**, **Former Soviet Union**, **Saudi Aramco**, and **Chevron** consistently appeared among the top contributors. These organizations, particularly when state-owned or nation-state operated, hold significant responsibility for historical and ongoing emissions.
+
+Ownership type was a key differentiator in emissions volume. **Nation-state** and **state-owned entities** accounted for a larger portion of global emissions than investor-owned companies, underscoring the influence of political control, energy sovereignty, and national-scale production. This observation suggests that efforts to reduce emissions must involve strategic cooperation and accountability mechanisms at both corporate and governmental levels.
+
+Fuel type analysis revealed that **Oil and NGL** fuels contributed the most to total historical emissions, while **bituminous coal** emerged as the most carbon-intensive on average. This dual finding highlights a need to address both the scale of fossil fuel use and the relative dirtiness of different fuels in climate action strategies. For example, even if coal is less produced, its emissions per unit justify aggressive phase-out initiatives.
+
+The moderate positive correlation (**0.4**) between production volume and total emissions confirms that while high production often coincides with high emissions, the relationship is not strictly linear. Other factors—such as fuel type, combustion technology, and regulatory practices—play a significant role in shaping emissions outcomes.
+
+# Future Works
+
+Future research could examine emissions per unit of production across different companies and countries to better identify the worst-performing entities in terms of efficiency.Also, A more advanced trend analysis using time-series modeling could help isolate policy impacts, economic shocks (e.g., COVID-19), or technological changes over decades.Furthermore, grouping companies by geographic regions or geopolitical blocs (e.g., OPEC, OECD) could provide more context for accountability and international collaboration.
+
+\newpage
+
+# References
+
